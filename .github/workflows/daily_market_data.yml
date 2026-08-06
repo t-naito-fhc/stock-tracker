@@ -1,0 +1,41 @@
+# このファイルは、GitHubリポジトリの以下のパスに置いてな：
+#   .github/workflows/daily_market_data.yml
+#
+# cronの "0 23 * * *" はUTC時刻。UTC 23:00 = 日本時間(JST) 翌朝8:00 のことや。
+# （GitHub Actionsのスケジュールは若干遅延することがあるので、多少前後するのは仕様）
+
+name: Daily Market Data
+
+on:
+  schedule:
+    - cron: '0 23 * * *'
+  workflow_dispatch: {}   # 手動実行ボタンも使えるようにしとく（テスト用に便利）
+
+permissions:
+  contents: write   # data/latest.json をコミット・プッシュするために必要
+
+jobs:
+  fetch-market-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Pythonをセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 依存パッケージをインストール
+        run: pip install -r requirements.txt
+
+      - name: 株価データを取得してJSONに書き出し
+        run: python fetch_market_data.py
+
+      - name: 変更をコミット＆プッシュ
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/latest.json
+          git diff --staged --quiet || git commit -m "daily market data update"
+          git push
