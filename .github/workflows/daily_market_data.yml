@@ -1,14 +1,16 @@
 # このファイルは、GitHubリポジトリの以下のパスに置いてな：
 #   .github/workflows/daily_market_data.yml
 #
-# cronの "0 23 * * *" はUTC時刻。UTC 23:00 = 日本時間(JST) 翌朝8:00 のことや。
+# cronの "0 7 * * *" はUTC時刻。UTC 7:00 = 日本時間(JST) 16:00 のことや。
+# 東証の取引終了(15:30)から30分後を狙っていて、終値が確実に確定・反映
+# されたタイミングで「その日のうちに」記録する設計。
 # （GitHub Actionsのスケジュールは若干遅延することがあるので、多少前後するのは仕様）
 
 name: Daily Market Data
 
 on:
   schedule:
-    - cron: '0 23 * * *'
+    - cron: '0 7 * * *'
   workflow_dispatch: {}   # 手動実行ボタンも使えるようにしとく（テスト用に便利）
 
 permissions:
