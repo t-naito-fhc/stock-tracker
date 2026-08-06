@@ -1,17 +1,23 @@
 """
 ===================================================================
-9757（船井総研ホールディングス）前日終値・時価総額 ＋ 日経平均前日終値
+9757（船井総研ホールディングス）前日終値 ＋ 日経平均前日終値
 取引終了後の夕方にGitHub Actionsで自動実行 → リポジトリ内のJSONファイルに書き出す
 ===================================================================
 
 【仕組み】
 ・yfinance（Yahoo!ファイナンスの非公式Pythonライブラリ、登録不要）で
   9757.T と ^N225 の値を取得する
-・このスクリプトは「取引終了後の夕方（16:30頃）」に実行する前提。
+・このスクリプトは「取引終了後の夕方（16:00頃）」に実行する前提。
   その時点ではその日の取引がもう終わっているので、取得できるのは
   「その日の確定した終値」になる
-・取得したデータは data/latest.json に書き出す（Webhook送信はしない）
+・取得したデータは data/latest.json に書き出す
 ・このJSONファイルをGAS側が定期的に読みに行く（pull方式）
+
+【設計方針】
+時価総額の計算はこのスクリプトではやらない。株価と発行済株式数から
+時価総額を出す計算は、スプレッドシート側の数式（例：=B2*100000000/1000000）
+でやるようにしている。担当者が異動しても、誰でもスプレッドシートを
+見ればすぐに計算方法が分かるようにするため。
 ===================================================================
 """
 
@@ -21,10 +27,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import yfinance as yf
-
-# 発行済株式数のフォールバック値（yfinanceから取得できなかった場合に使う）
-# 頻繁に変わる数字ではないので、年1回くらい見直せばOK
-SHARES_OUTSTANDING_FALLBACK = 100_000_000  # 2026年8月時点の参考値
 
 OUTPUT_PATH = os.path.join("data", "latest.json")
 
@@ -51,28 +53,15 @@ def _get_last_completed_close(hist):
     return hist["Close"].iloc[-1]
 
 
-def get_previous_close_and_shares(ticker_symbol: str):
-    """指定ティッカーの前日終値と発行済株式数を取得する"""
+def get_previous_close(ticker_symbol: str) -> int:
+    """指定ティッカーの前日終値（または当日確定終値）を取得する"""
     ticker = yf.Ticker(ticker_symbol)
     hist = ticker.history(period="5d")
 
     if hist.empty:
         raise RuntimeError(f"{ticker_symbol} の株価データが取得できませんでした")
 
-    previous_close = round(float(_get_last_completed_close(hist)))
-
-    shares_outstanding = None
-    try:
-        info = ticker.info
-        shares_outstanding = info.get("sharesOutstanding")
-    except Exception as e:
-        print(f"発行済株式数の取得に失敗（yfinance info）: {e}")
-
-    if not shares_outstanding:
-        shares_outstanding = SHARES_OUTSTANDING_FALLBACK
-        print(f"発行済株式数はフォールバック値を使用: {shares_outstanding}")
-
-    return previous_close, shares_outstanding
+    return round(float(_get_last_completed_close(hist)))
 
 
 def get_index_previous_close(ticker_symbol: str) -> float:
@@ -89,15 +78,12 @@ def get_index_previous_close(ticker_symbol: str) -> float:
 def main():
     today_str = datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y/%m/%d")
 
-    stock_price, shares_outstanding = get_previous_close_and_shares("9757.T")
-    market_cap_million_yen = round(stock_price * shares_outstanding / 1_000_000)
-
+    stock_price = get_previous_close("9757.T")
     nikkei_close = get_index_previous_close("^N225")
 
     data = {
         "date": today_str,
         "stockPrice": stock_price,
-        "marketCap": market_cap_million_yen,
         "nikkeiClose": nikkei_close,
         "generatedAtUtc": datetime.utcnow().isoformat(),
     }
