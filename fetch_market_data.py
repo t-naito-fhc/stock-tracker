@@ -31,14 +31,21 @@ OUTPUT_PATH = os.path.join("data", "latest.json")
 
 def _get_last_completed_close(hist):
     """
-    取引時間中に実行された場合、最新行が「まだ確定してない当日の途中経過」に
-    なっていることがある。最新行の日付が今日（JST）と一致する場合は、
-    その行を除外して1つ前（＝直近の確定済み終値）を使う。
-    """
-    today_jst = datetime.now(ZoneInfo("Asia/Tokyo")).date()
-    last_date = hist.index[-1].date()
+    取引時間中（15:30の取引終了より前）に実行された場合、最新行が
+    「まだ確定してない当日の途中経過」になっていることがある。
+    その場合のみ、その行を除外して1つ前（＝直近の確定済み終値）を使う。
 
-    if last_date == today_jst and len(hist) >= 2:
+    逆に、15:30を過ぎてから実行された場合は、最新行の日付が今日であっても
+    それはもう「今日の確定した終値」なので、そのまま使う。
+    """
+    now_jst = datetime.now(ZoneInfo("Asia/Tokyo"))
+    market_close_today = now_jst.replace(hour=15, minute=30, second=0, microsecond=0)
+
+    last_date = hist.index[-1].date()
+    is_last_bar_today = last_date == now_jst.date()
+    before_market_close = now_jst < market_close_today
+
+    if is_last_bar_today and before_market_close and len(hist) >= 2:
         return hist["Close"].iloc[-2]
 
     return hist["Close"].iloc[-1]
