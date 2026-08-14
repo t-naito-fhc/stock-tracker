@@ -31,7 +31,7 @@ import yfinance as yf
 OUTPUT_PATH = os.path.join("data", "latest.json")
 
 
-def _get_last_completed_close(hist):
+def _get_last_completed_bar(hist):
     """
     取引時間中（15:30の取引終了より前）に実行された場合、最新行が
     「まだ確定してない当日の途中経過」になっていることがある。
@@ -39,6 +39,11 @@ def _get_last_completed_close(hist):
 
     逆に、15:30を過ぎてから実行された場合は、最新行の日付が今日であっても
     それはもう「今日の確定した終値」なので、そのまま使う。
+
+    戻り値は (取引日, 終値) のタプル。土日・祝日にこのスクリプトが実行された
+    場合、取引日は「直近の営業日（例：金曜日）」になる。日付を実行日
+    （例：土曜日）にしてしまうと、前営業日比が意図せず0になってしまうため、
+    必ず「実際の取引日」を使うようにしている。
     """
     now_jst = datetime.now(ZoneInfo("Asia/Tokyo"))
     market_close_today = now_jst.replace(hour=15, minute=30, second=0, microsecond=0)
@@ -48,41 +53,46 @@ def _get_last_completed_close(hist):
     before_market_close = now_jst < market_close_today
 
     if is_last_bar_today and before_market_close and len(hist) >= 2:
-        return hist["Close"].iloc[-2]
+        return hist.index[-2].date(), hist["Close"].iloc[-2]
 
-    return hist["Close"].iloc[-1]
+    return hist.index[-1].date(), hist["Close"].iloc[-1]
 
 
-def get_previous_close(ticker_symbol: str) -> int:
-    """指定ティッカーの前日終値（または当日確定終値）を取得する"""
+def get_previous_close(ticker_symbol: str):
+    """指定ティッカーの前日終値（または当日確定終値）と、その取引日を取得する"""
     ticker = yf.Ticker(ticker_symbol)
     hist = ticker.history(period="5d")
 
     if hist.empty:
         raise RuntimeError(f"{ticker_symbol} の株価データが取得できませんでした")
 
-    return round(float(_get_last_completed_close(hist)))
+    trading_date, price = _get_last_completed_bar(hist)
+    return trading_date, round(float(price))
 
 
-def get_index_previous_close(ticker_symbol: str) -> float:
-    """指数（日経平均など）の前日終値を取得する"""
+def get_index_previous_close(ticker_symbol: str):
+    """指数（日経平均など）の前日終値（または当日確定終値）と、その取引日を取得する"""
     ticker = yf.Ticker(ticker_symbol)
     hist = ticker.history(period="5d")
 
     if hist.empty:
         raise RuntimeError(f"{ticker_symbol} のデータが取得できませんでした")
 
-    return round(float(_get_last_completed_close(hist)), 2)
+    trading_date, price = _get_last_completed_bar(hist)
+    return trading_date, round(float(price), 2)
 
 
 def main():
-    today_str = datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y/%m/%d")
+    stock_date, stock_price = get_previous_close("9757.T")
+    _, nikkei_close = get_index_previous_close("^N225")
 
-    stock_price = get_previous_close("9757.T")
-    nikkei_close = get_index_previous_close("^N225")
+    # 記録する日付は「実行日」ではなく「実際の取引日」を使う。
+    # 土日・祝日にこのスクリプトが動いても、記録される日付は
+    # 直近の営業日（例：金曜日）になるので、GAS側で重複チェックできる。
+    date_str = stock_date.strftime("%Y/%m/%d")
 
     data = {
-        "date": today_str,
+        "date": date_str,
         "stockPrice": stock_price,
         "nikkeiClose": nikkei_close,
         "generatedAtUtc": datetime.utcnow().isoformat(),
