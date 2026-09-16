@@ -1,27 +1,9 @@
-# このファイルは、GitHubリポジトリの以下のパスに置いてな：
-#   .github/workflows/daily_market_data.yml
-#
-# cronの "0 7 * * *" はUTC時刻。UTC 7:00 = 日本時間(JST) 16:00 のことや。
-# 東証の取引終了(15:30)から30分後を狙っていて、終値が確実に確定・反映
-# されたタイミングで「その日のうちに」記録する設計。
-# （GitHub Actionsのスケジュールは若干遅延することがあるので、多少前後するのは仕様）
-#
-# 【通知の仕組みについて】
-# このワークフローは2つの経路で起動される：
-#   1. cron-job.org が GitHub API 経由で workflow_dispatch を叩く（確実な方）
-#   2. GitHub純正の schedule トリガー（バックアップ、多少の遅延あり）
-# 通知は github.event_name で判定し、workflow_dispatch(cron-job.org経由)の
-# 時だけ送信する。schedule(バックアップ)経由では通知を送らない。
-# ※GitHub画面から手動で「Run workflow」を押した場合もworkflow_dispatch扱いに
-#   なるため、その場合も通知は飛ぶ（許容仕様）。
-
 name: Daily Market Data
 
 on:
   schedule:
     - cron: '0 7 * * *'
   workflow_dispatch: {}   # 手動実行ボタンも使えるようにしとく（テスト用に便利）
-                          # ※cron-job.orgもこのイベントを叩いて起動する
 
 permissions:
   contents: write   # data/latest.json をコミット・プッシュするために必要
@@ -52,39 +34,3 @@ jobs:
           git diff --staged --quiet || git commit -m "daily market data update"
           git pull --rebase origin main
           git push
-
-      - name: 【Cron成功通知】Slackチャンネルへメール送信
-        if: ${{ success() && github.event_name == 'workflow_dispatch' }}
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.GMAIL_USERNAME }}
-          password: ${{ secrets.GMAIL_APP_PASSWORD }}
-          to: ${{ secrets.SLACK_CHANNEL_EMAIL }}
-          from: GitHub Actions
-          subject: "✅ Daily Market Data 更新完了(Cron)"
-          body: "cron-job.org経由のCronによる daily_market_data.yml の実行が正常に完了しました。実行日時: ${{ github.run_id }} / リポジトリ: ${{ github.repository }}"
-
-      - name: 【Cron失敗通知】Slackチャンネルへメール送信
-        if: ${{ failure() && github.event_name == 'workflow_dispatch' }}
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.GMAIL_USERNAME }}
-          password: ${{ secrets.GMAIL_APP_PASSWORD }}
-          to: ${{ secrets.SLACK_CHANNEL_EMAIL }}
-          from: GitHub Actions
-          subject: "❌ Daily Market Data 実行失敗(Cron)"
-          body: "cron-job.org経由のCronによる daily_market_data.yml の実行が失敗しました。確認をお願いします。実行日時: ${{ github.run_id }} / リポジトリ: ${{ github.repository }}"
-
-
-      - name: 【デバッグ用】Secretsの文字数を確認
-        if: always()
-        run: |
-          echo "USERNAME文字数: ${#GMAIL_USERNAME}"
-          echo "APP_PASSWORD文字数: ${#GMAIL_APP_PASSWORD}"
-        env:
-          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
