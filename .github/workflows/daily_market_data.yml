@@ -79,7 +79,9 @@ jobs:
           subject: "❌ Daily Market Data 実行失敗(Cron)"
           body: "cron-job.org経由のCronによる daily_market_data.yml の実行が失敗しました。確認をお願いします。実行日時: ${{ github.run_id }} / リポジトリ: ${{ github.repository }}"
 
+
       - name: 【デバッグ用】Secretsの文字数を確認
+        if: always()
         run: |
           echo "USERNAME文字数: ${#GMAIL_USERNAME}"
           echo "APP_PASSWORD文字数: ${#GMAIL_APP_PASSWORD}"
