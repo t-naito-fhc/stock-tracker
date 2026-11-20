@@ -1,9 +1,9 @@
 name: Daily Market Data
 
 on:
-  schedule:
-    - cron: '0 7 * * *'
-  workflow_dispatch: {}   # 手動実行ボタンも使えるようにしとく（テスト用に便利）
+  # 起動は外部トリガー（workflow_dispatch）に一本化。
+  # GitHubのscheduleは大幅に遅延して失敗メールの原因になっていたため使わない。
+  workflow_dispatch: {}
 
 permissions:
   contents: write   # data/latest.json をコミット・プッシュするために必要
@@ -11,7 +11,12 @@ permissions:
 jobs:
   fetch-market-data:
     runs-on: ubuntu-latest
+    env:
+      HC_PING_URL: ${{ secrets.HC_PING_URL }}   # healthchecks.ioのPing URL（Secretsに登録）
     steps:
+      - name: 監視に開始を通知
+        run: '[ -z "$HC_PING_URL" ] || curl -fsS -m 10 --retry 3 "$HC_PING_URL/start" || true'
+
       - name: リポジトリをチェックアウト
         uses: actions/checkout@v4
 
@@ -34,3 +39,10 @@ jobs:
           git diff --staged --quiet || git commit -m "daily market data update"
           git pull --rebase origin main
           git push
+
+      - name: 監視に成功を通知
+        run: '[ -z "$HC_PING_URL" ] || curl -fsS -m 10 --retry 3 "$HC_PING_URL"'
+
+      - name: 監視に失敗を通知
+        if: failure()
+        run: '[ -z "$HC_PING_URL" ] || curl -fsS -m 10 --retry 3 "$HC_PING_URL/fail" || true'
