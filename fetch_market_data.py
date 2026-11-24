@@ -45,6 +45,11 @@ def _get_last_completed_bar(hist):
     （例：土曜日）にしてしまうと、前営業日比が意図せず0になってしまうため、
     必ず「実際の取引日」を使うようにしている。
     """
+    # 終値がまだ入っていない行（NaN）は、int変換で落ちるので先に除外する
+    hist = hist.dropna(subset=["Close"])
+    if hist.empty:
+        raise RuntimeError("終値が入っている行がありませんでした")
+
     now_jst = datetime.now(ZoneInfo("Asia/Tokyo"))
     market_close_today = now_jst.replace(hour=15, minute=30, second=0, microsecond=0)
 
